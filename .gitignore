@@ -1,1 +1,6 @@
-/.git
+node_modules
+bundle.js
+config.json
+*.pem
+package-lock.json
+*.log
