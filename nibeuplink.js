@@ -1,126 +1,161 @@
+'use strict';
+
+const got = require('got');
 const { AuthorizationCode } = require('simple-oauth2');
-import https from 'https';
 
 class nibeUplink {
     scope = 'READSYSTEM';
-    
+
+    get https_defaultoptions() { 
+        return {
+            host : 'api.nibeuplink.com', 
+            protocol: 'https:',
+            port : 443,
+            method : 'GET',
+            data: "",
+            timeout: 3000,
+            //json: true,
+        };
+    }
+            
     constructor( clientId, clientSecret, callbackUrl, token ) {        
         this.callbackUrl = callbackUrl;
-        this.token = token;
 
         this.oauthclient = new AuthorizationCode({
             client: {
                 id: clientId,
                 secret: clientSecret,
             },
-            auth: oauth2,
+            auth: { 
+                tokenHost: 'https://api.nibeuplink.com',
+                tokenPath: '/oauth/token',
+                authorizePath: '/oauth/authorize', 
+            },
             options: {
                 authorizationMethod : "body"
             }
         });
         
-        getSystems();
+        if ( typeof token != 'undefined' && token != null ) {
+            // Token provided, so try to create using refresh token
+            this.AccessToken = this.oauthclient.createToken(token);
+        }
+
+        //console.log(this.getSystems());
         
+    }
+
+    get accessToken() {
+        return this.AccessToken;
     }
 
     get authorizeUrl() {
         // Authorization uri definition
         this.state = (Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 30));
-        const authorizationUri = oauthclient.authorizeURL({
+        const authorizeUrl = this.oauthclient.authorizeURL({
             redirect_uri: this.callbackUrl,
             scope: this.scope,
             state: this.state,
         });
+        return authorizeUrl;
     }    
 
-    get accessToken() {
-        if ( this.token ) {
-            if ( this.token.expired() ) {         
+    getAccessToken = async () => {
+        if ( typeof this.AccessToken !== 'undefined' && this.AccessToken != null) {
+            if ( this.AccessToken.expired() ) {         
+                console.log('Token expired, try refresh.');
                 try {
-                    const refreshParams = { scope: scope };
-                    this.token = this.token.refresh(refreshParams);
+                    const refreshParams = { scope: this.scope };
+                    this.AccessToken = await this.AccessToken.refresh(refreshParams);
                 } catch (error) {
                     console.log('Error refreshing access token: ', error.message);
                 }
             }
+            return this.AccessToken.token.access_token;
         } else { return null; }
     }
 
     processCallback = async ( req ) => {
         const options = {
             code: req.query.code,
-            redirect_uri: callbackUrl,
+            redirect_uri: this.callbackUrl,
             scope: this.scope
         };
 
         try {
-            this.token = await oauthclient.getToken(options);
-            console.log('The resulting token: ', accessToken.token);
+            this.AccessToken = await this.oauthclient.getToken(options);
+            console.log('The resulting access token: ', this.AccessToken);
             return true;
         } catch (error) {
-            this.token = null;
+            this.AccessToken = null;
             console.error('Access Token Error', error.message);
             return false;            
         }        
     }
 
-    getSystems = async ( access_token ) => {
-        let options =  https_defaultoptions;
-        options.path = 'api/v1/systems';
-        return await doRequest( options, access_token, cb );
+    doRequest = async ( options ) => {
+        let access_token = await this.getAccessToken();
+        let reqOptions = options;
+        reqOptions.headers = { 
+            Authorization: `Bearer ${access_token}`,
+            Accept: "application/json, text/plain, */*"
+        };
+        console.log('doRequest reqOptions: ',reqOptions);
+        let response = await got(null, reqOptions);
+        console.log('doRequest response.body: ',response.body);
+        return JSON.parse(response.body);
     }
 
-    doRequest = async ( options, access_token ) => {
-        let reqOptions = options;
-        reqOptions.headers = { Authorization: `Bearer ${access_token}` };
-        var nibeRequest = await https.request(reqOptions, function(niberesult) {
-            console.log("statusCode: ", niberesult.statusCode);
-            console.log("headers: ", niberesult.headers);
-                        
-            niberesult.on('data', function(data) {
-                if ( cb ) cb(data);    
-            });
-            
-        });
-        await nibeRequest.end();
+    getSystems = async ( ) => {
+        let options =  this.https_defaultoptions;
+        options.pathname = 'api/v1/systems';
+        let JSONresponse = await this.doRequest( options );
+        //console.log('getSystems JSONresponse',JSONresponse);
+        this.Systems = JSONresponse.objects;
+        console.log('getSystems this.Systems',this.Systems);
+        for ( var system in this.Systems) {
+            console.log('getSystems system',this.Systems[system]);
+            options.pathname = `api/v1/systems/${this.Systems[system].systemId}/units`;
+            JSONresponse = await this.doRequest( options );
+            this.Systems[system].units = JSONresponse;
+        }
+        return this.Systems;
     }
-        
+
+    getParameters = async ( ) => {
+        let options =  this.https_defaultoptions;
+        let JSONresponse = {};
+        let allData = [];
+        // Get Systems first. Without systems, no parameters
+        if ( typeof this.Systems === 'undefined' || this.Systems === null) {
+            await this.getSystems();
+        }
+        for ( var system in this.Systems) {
+            let systemId = this.Systems[system].systemId;
+            let systemData = { systemId: systemId, systemUnitData : [] };
+            for ( var unit in this.Systems[system].units) {
+                let systemUnitId = this.Systems[system].units[unit].systemUnitId;
+                options.pathname = `api/v1/systems/${systemId}/serviceinfo/categories`
+                options.searchParams = { 
+                    systemUnitId : systemUnitId,
+                    parameters: true,
+                }
+                try {
+                    JSONresponse = await this.doRequest( options );
+                } catch (err) {
+                    console.log( 'getParameters error: ', err );
+                }
+                let unitData = { systemUnitId: systemUnitId, data: JSONresponse }                
+                systemData.systemUnitData.push(unitData);
+            }
+            console.log('getParameters systemData=',systemData);
+            allData.push(systemData);
+        }
+        return allData;
+    }
+
+    
 
 }
 module.exports = nibeUplink;
-
-const https_defaultoptions = {
-    host : 'api.nibeuplink.com', 
-    protocol: 'https:',
-    port : 443,
-    method : 'GET'
-};
-
-const oauth2 = { 
-    tokenHost: 'https://api.nibeuplink.com',
-    tokenPath: '/oauth/token',
-    authorizePath: '/oauth/authorize', 
-}
-
-
-
-
-exports.g
-}
-
-
-function doRequest ( options, access_token, cb ) {
-    let reqOptions = options;
-    reqOptions.headers = { Authorization: `Bearer ${access_token}` };
-    var nibeRequest = https.request(reqOptions, function(niberesult) {
-        console.log("statusCode: ", niberesult.statusCode);
-        console.log("headers: ", niberesult.headers);
-                    
-        niberesult.on('data', function(data) {
-            cb(data);    
-        });
-        
-    });
-    nibeRequest.end();
-}
 
