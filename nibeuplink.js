@@ -100,9 +100,9 @@ class nibeUplink {
             Authorization: `Bearer ${access_token}`,
             Accept: "application/json, text/plain, */*"
         };
-        console.log('doRequest reqOptions: ',reqOptions);
+        //console.log('doRequest reqOptions: ',reqOptions);
         let response = await got(null, reqOptions);
-        console.log('doRequest response.body: ',response.body);
+        //console.log('doRequest response.body: ',response.body);
         return JSON.parse(response.body);
     }
 
@@ -112,13 +112,13 @@ class nibeUplink {
         let JSONresponse = await this.doRequest( options );
         //console.log('getSystems JSONresponse',JSONresponse);
         this.Systems = JSONresponse.objects;
-        console.log('getSystems this.Systems',this.Systems);
+        //console.log('getSystems this.Systems',this.Systems);
         for ( var system in this.Systems) {
-            console.log('getSystems system',this.Systems[system]);
             options.pathname = `api/v1/systems/${this.Systems[system].systemId}/units`;
             JSONresponse = await this.doRequest( options );
             this.Systems[system].units = JSONresponse;
         }
+        console.log('getSystems this.Systems=',JSON.stringify(this.Systems, null, 2));
         return this.Systems;
     }
 
@@ -147,10 +147,10 @@ class nibeUplink {
                 }
                 let unitData = { systemUnitId: systemUnitId, data: JSONresponse }                
                 systemData.systemUnitData.push(unitData);
-            }
-            console.log('getParameters systemData=',systemData);
+            }            
             allData.push(systemData);
         }
+        console.log('getParameters allData=',JSON.stringify(allData, null, 2));
         return allData;
     }
 
