@@ -3,7 +3,7 @@
 const got = require('got');
 const { AuthorizationCode } = require('simple-oauth2');
 
-class nibeUplink {
+module.exports = class nibeUplink {
     scope = 'READSYSTEM';
     data = {};
 
@@ -161,5 +161,3 @@ class nibeUplink {
     
 
 }
-module.exports = nibeUplink;
-
