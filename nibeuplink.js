@@ -5,6 +5,7 @@ const { AuthorizationCode } = require('simple-oauth2');
 
 class nibeUplink {
     scope = 'READSYSTEM';
+    data = {};
 
     get https_defaultoptions() { 
         return {
@@ -106,35 +107,38 @@ class nibeUplink {
         return JSON.parse(response.body);
     }
 
+    getData = async () => {
+        return this.getParameters();
+    }
+
     getSystems = async ( ) => {
         let options =  this.https_defaultoptions;
         options.pathname = 'api/v1/systems';
         let JSONresponse = await this.doRequest( options );
         //console.log('getSystems JSONresponse',JSONresponse);
-        this.Systems = JSONresponse.objects;
-        //console.log('getSystems this.Systems',this.Systems);
-        for ( var system in this.Systems) {
-            options.pathname = `api/v1/systems/${this.Systems[system].systemId}/units`;
+        this.data.systems = JSONresponse.objects;
+        //console.log('getSystems this.data.systems',this.data.systems);
+        for ( var system in this.data.systems) {
+            options.pathname = `api/v1/systems/${this.data.systems[system].systemId}/units`;
             JSONresponse = await this.doRequest( options );
-            this.Systems[system].units = JSONresponse;
+            this.data.systems[system].units = JSONresponse;
         }
-        console.log('getSystems this.Systems=',JSON.stringify(this.Systems, null, 2));
-        return this.Systems;
+        console.log('getSystems this.data.systems=',JSON.stringify(this.data.systems, null, 2));        
+        return this.data.systems;
     }
 
     getParameters = async ( ) => {
         let options =  this.https_defaultoptions;
         let JSONresponse = {};
-        let allData = [];
         // Get Systems first. Without systems, no parameters
-        if ( typeof this.Systems === 'undefined' || this.Systems === null) {
+        if ( typeof this.data.systems === 'undefined' || this.data.systems === null) {
             await this.getSystems();
         }
-        for ( var system in this.Systems) {
-            let systemId = this.Systems[system].systemId;
-            let systemData = { systemId: systemId, systemUnitData : [] };
-            for ( var unit in this.Systems[system].units) {
-                let systemUnitId = this.Systems[system].units[unit].systemUnitId;
+        for ( var system in this.data.systems) {
+            let systemId = this.data.systems[system].systemId;
+            //let systemData = { systemId: systemId, systemUnitData : [] };
+            for ( var unit in this.data.systems[system].units) {
+                let systemUnitId = this.data.systems[system].units[unit].systemUnitId;
                 options.pathname = `api/v1/systems/${systemId}/serviceinfo/categories`
                 options.searchParams = { 
                     systemUnitId : systemUnitId,
@@ -145,13 +149,13 @@ class nibeUplink {
                 } catch (err) {
                     console.log( 'getParameters error: ', err );
                 }
-                let unitData = { systemUnitId: systemUnitId, data: JSONresponse }                
-                systemData.systemUnitData.push(unitData);
+                //let unitData = { systemUnitId: systemUnitId, data: JSONresponse }                
+                //systemData.systemUnitData.push(unitData);
+                this.data.systems[system].units[unit].categories = JSONresponse;
             }            
-            allData.push(systemData);
         }
-        console.log('getParameters allData=',JSON.stringify(allData, null, 2));
-        return allData;
+        //console.log('getParameters this.data=',JSON.stringify(this.data, null, 2));        
+        return this.data;
     }
 
     
