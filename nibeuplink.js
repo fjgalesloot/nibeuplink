@@ -6,6 +6,7 @@ const { AuthorizationCode } = require('simple-oauth2');
 module.exports = class nibeUplink {
     scope = 'READSYSTEM';
     data = {};
+    AccessToken;
 
     get https_defaultoptions() { 
         return {
@@ -96,15 +97,19 @@ module.exports = class nibeUplink {
 
     doRequest = async ( options ) => {
         let access_token = await this.getAccessToken();
-        let reqOptions = options;
-        reqOptions.headers = { 
-            Authorization: `Bearer ${access_token}`,
-            Accept: "application/json, text/plain, */*"
-        };
-        //console.log('doRequest reqOptions: ',reqOptions);
-        let response = await got(null, reqOptions);
-        //console.log('doRequest response.body: ',response.body);
-        return JSON.parse(response.body);
+        if ( access_token != null ) {
+            let reqOptions = options;
+            reqOptions.headers = { 
+                Authorization: `Bearer ${access_token}`,
+                Accept: "application/json, text/plain, */*"
+            };
+            //console.log('doRequest reqOptions: ',reqOptions);
+            let response = await got(null, reqOptions);
+            //console.log('doRequest response.body: ',response.body);
+            return JSON.parse(response.body);
+        } else {
+            throw new Error(`No access token and unable to retrieve. Please authorize with Nibe Uplilnk by accesing ${this.authorizeUrl}`);
+        }
     }
 
     getData = async () => {
@@ -120,7 +125,9 @@ module.exports = class nibeUplink {
         //console.log('getSystems this.data.systems',this.data.systems);
         for ( var system in this.data.systems) {
             options.pathname = `api/v1/systems/${this.data.systems[system].systemId}/units`;
-            JSONresponse = await this.doRequest( options );
+            JSONresponse = await this.doRequest( options ).catch(( reason ) => {
+                throw new Error(reason);
+            });
             this.data.systems[system].units = JSONresponse;
         }
         console.log('getSystems this.data.systems=',JSON.stringify(this.data.systems, null, 2));        
@@ -145,9 +152,11 @@ module.exports = class nibeUplink {
                     parameters: true,
                 }
                 try {
-                    JSONresponse = await this.doRequest( options );
+                    JSONresponse = await this.doRequest( options ).catch(( reason ) => {
+                        throw new Error(reason);
+                    });
                 } catch (err) {
-                    console.log( 'getParameters error: ', err );
+                    
                 }
                 //let unitData = { systemUnitId: systemUnitId, data: JSONresponse }                
                 //systemData.systemUnitData.push(unitData);
