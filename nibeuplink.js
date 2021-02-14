@@ -4,7 +4,7 @@ const got = require('got');
 const { AuthorizationCode } = require('simple-oauth2');
 
 module.exports = class nibeUplink {
-    scope = 'READSYSTEM';
+    scope = 'READSYSTEM WRITESYSTEM';
     data = {};
     AccessToken;
 
@@ -97,23 +97,24 @@ module.exports = class nibeUplink {
 
     doRequest = async ( options ) => {
         let access_token = await this.getAccessToken();
-        if ( access_token != null ) {
+        if ( access_token != null ) {            
             let reqOptions = options;
-            reqOptions.headers = { 
-                Authorization: `Bearer ${access_token}`,
-                Accept: "application/json, text/plain, */*"
-            };
+            if ( reqOptions.headers === undefined ) { reqOptions.headers = {} }
+            reqOptions.headers.Authorization = `Bearer ${access_token}`;
+            reqOptions.headers.Accept = "application/json, text/plain, */*";
             //console.log('doRequest reqOptions: ',reqOptions);
             let response = await got(null, reqOptions);
-            //console.log('doRequest response.body: ',response.body);
-            return JSON.parse(response.body);
+            //console.log('doRequest response.body: ',response.body);            
+            if ( response.headers['content-length'] > 0 ) {
+                return JSON.parse(response.body);             
+            }
         } else {
             throw new Error(`No access token and unable to retrieve. Please authorize with Nibe Uplilnk by accesing ${this.authorizeUrl}`);
         }
     }
 
     getData = async () => {
-        return this.getParameters();
+        return this.getParameters().then(this.getSmartHomeThermostats);
     }
 
     getSystems = async ( ) => {
@@ -167,6 +168,42 @@ module.exports = class nibeUplink {
         return this.data;
     }
 
-    
+    getSmartHomeThermostats = async ( ) => {
+        let options =  this.https_defaultoptions;
+        let JSONresponse = {};
+        // Get Systems first. Without systems, no parameters
+        if ( typeof this.data.systems === 'undefined' || this.data.systems === null) {
+            await this.getSystems();
+        }
+        for ( var system in this.data.systems) {
+            let systemId = this.data.systems[system].systemId;
+            options.pathname = `api/v1/systems/${systemId}/smarthome/thermostats`
+            try {
+                JSONresponse = await this.doRequest( options ).catch(( reason ) => {
+                    throw new Error(reason);
+                });
+            } catch (err) {
+                
+            }
+            if ( typeof this.data.systems[system].smarthome === 'undefined' ) {
+                this.data.systems[system].smarthome = {};
+            }
+            this.data.systems[system].smarthome.thermostats = JSONresponse;
+            if ( debug ) console.log('getSmartHomeThermostats this.data.systems[system].smarthome.thermostats=',JSON.stringify(this.data.systems[system].smarthome.thermostats, null, 2));        
+        }
+        return this.data;
+    }
+
+    setSmartHomeThermostat = async ( systemId, body ) => {
+        let options =  this.https_defaultoptions;        
+        options.method = "POST";
+        options.data = undefined;
+        options.body = body;
+        options.headers = { "Content-Type": "application/json" }
+        options.pathname = `api/v1/systems/${systemId}/smarthome/thermostats`
+        await this.doRequest( options ).catch(( reason ) => {
+            throw new Error(reason);
+        });
+    }
 
 }
