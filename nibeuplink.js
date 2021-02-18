@@ -3,6 +3,12 @@
 const got = require('got');
 const { AuthorizationCode } = require('simple-oauth2');
 
+const MAX_REQUEST_PARAMETERS = 15
+const PARAM_HOTWATER_SYSTEM_1 = {
+    a: [ 40014, 40013, 47041, 47387, 47048, 47044, 47047, 47043, 47049, 47045, 47045, 44073, ],
+    b: [ 47050, 47051, 47052, "hot_water_boost", ]
+}
+
 module.exports = class nibeUplink {
     scope = 'READSYSTEM WRITESYSTEM';
     data = {};
@@ -14,9 +20,7 @@ module.exports = class nibeUplink {
             protocol: 'https:',
             port : 443,
             method : 'GET',
-            data: "",
             timeout: 3000,
-            //json: true,
         };
     }
             
@@ -73,6 +77,7 @@ module.exports = class nibeUplink {
                     console.log('Error refreshing access token: ', error.message);
                 }
             }
+            console.log(`AccessToken = `, this.AccessToken.token.access_token)
             return this.AccessToken.token.access_token;
         } else { return null; }
     }
@@ -96,6 +101,10 @@ module.exports = class nibeUplink {
     }
 
     doRequest = async ( options ) => {
+        return this.doRequestUrl( null, options )
+    }
+
+    doRequestUrl = async ( url, options ) => {
         let access_token = await this.getAccessToken();
         if ( access_token != null ) {            
             let reqOptions = options;
@@ -103,7 +112,7 @@ module.exports = class nibeUplink {
             reqOptions.headers.Authorization = `Bearer ${access_token}`;
             reqOptions.headers.Accept = "application/json, text/plain, */*";
             //console.log('doRequest reqOptions: ',reqOptions);
-            let response = await got(null, reqOptions);
+            let response = await got( url, reqOptions);
             //console.log('doRequest response.body: ',response.body);            
             if ( response.headers['content-length'] > 0 ) {
                 return JSON.parse(response.body);             
@@ -113,8 +122,9 @@ module.exports = class nibeUplink {
         }
     }
 
+
     getData = async () => {
-        return this.getParameters().then(this.getSmartHomeThermostats);
+        return this.getParameters().then(this.getSmartHomeThermostats).then(this.getParametersHotWaterSystem);
     }
 
     getSystems = async ( ) => {
@@ -131,7 +141,7 @@ module.exports = class nibeUplink {
             });
             this.data.systems[system].units = JSONresponse;
         }
-        console.log('getSystems this.data.systems=',JSON.stringify(this.data.systems, null, 2));        
+        if ( debug) { console.log('getSystems this.data.systems=',JSON.stringify(this.data.systems, null, 2)); }
         return this.data.systems;
     }
 
@@ -206,4 +216,29 @@ module.exports = class nibeUplink {
         });
     }
 
+    getParametersHotWaterSystem = async () => {
+        let options =  this.https_defaultoptions;
+        let JSONresponse = [];
+        // Get Systems first. Without systems, no parameters
+        if ( typeof this.data.systems === 'undefined' || this.data.systems === null) {
+            await this.getSystems();
+        }
+        for ( var system in this.data.systems) {
+            for ( var paramidx in PARAM_HOTWATER_SYSTEM_1) {
+                let systemId = this.data.systems[system].systemId;
+                let url = `${options.protocol}//${options.host}:${options.port}/api/v1/systems/${systemId}/parameters?parameterIds=`
+                url += PARAM_HOTWATER_SYSTEM_1[paramidx].join('&parameterIds=');
+                if ( debug ) console.log('getParametersHotWaterSystem options=',JSON.stringify(options, null, 2));        
+                JSONresponse = JSONresponse.concat(await this.doRequestUrl( url, options ).catch(( reason ) => {
+                    throw new Error(reason);
+                }));
+                if ( debug ) console.log('getParametersHotWaterSystem JSONresponse=',JSON.stringify(JSONresponse, null, 2));        
+            }
+            this.data.systems[system].hotwatersystem = { parameters: JSONresponse};
+        }
+        
+        return JSONresponse;
+    }
+
 }
+
